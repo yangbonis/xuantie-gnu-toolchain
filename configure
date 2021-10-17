@@ -594,6 +594,9 @@ with_gcc_src
 enable_gdb
 with_guile
 with_system_zlib
+configure_pkgversion
+enable_install_strip
+configure_gcc_dep_libs
 configure_host
 target_cxxflags
 target_cflags
@@ -602,6 +605,7 @@ gcc_checking
 newlib_multilib_names
 glibc_multilib_names
 multilib_flags
+multilib_gen
 WITH_TUNE
 WITH_ABI
 WITH_ARCH
@@ -670,11 +674,15 @@ with_arch
 with_abi
 with_tune
 enable_multilib
+with_multilib_generator
 enable_gcc_checking
 with_cmodel
 with_target_cflags
 with_target_cxxflags
 with_host
+with_gcc_dep_libs
+enable_install_strip
+with_pkgversion
 with_system_zlib
 with_guile
 enable_gdb
@@ -1321,6 +1329,7 @@ Optional Features:
   --enable-gcc-checking   Enable gcc internal checking, it will make gcc very
                           slow, only enable it when developing gcc
                           [--disable-gcc-checking]
+  --disable-install-strip Don't strip the executable file
   --disable-gdb           Don't build GDB, as it's not upstream
 
 Optional Packages:
@@ -1329,6 +1338,10 @@ Optional Packages:
   --with-arch=rv64imafdc  Sets the base RISC-V ISA, defaults to rv64imafdc
   --with-abi=lp64d        Sets the base RISC-V ABI, defaults to lp64d
   --with-tune=rocket      Set the base RISC-V CPU, defaults to rocket
+  --with-multilib-generator
+                          Multi-libs configuration string, only supported for
+                          bare-metal/elf toolchaih, this option implied
+                          --enable-multilib
   --with-cmodel           Select the code model to use when building libc and
                           libgcc [--with-cmodel=medlow]
   --with-target-cflags    Add extra target flags for C for library code
@@ -1336,6 +1349,9 @@ Optional Packages:
   --with-host=x86_64-w64-mingw32
                           Sets the host for the tools, you probably want
                           nothing
+  --with-gcc-dep-libs     Set prefix directory for installed GMP/MPFR/MPC
+                          package
+  --with-pkgversion       Set toolchain package version
   --without-system-zlib   use the builtin copy of zlib from GCC
   --with-guile            Set which guile to use, if any
   --with-gcc-src          Set gcc source path, use builtin source by default
@@ -3318,7 +3334,6 @@ WITH_ARCH=--with-arch=$with_arch
 
 WITH_ABI=--with-abi=$with_abi
 
-WITH_TUNE=--with-tune=$with_tune
 
 
 # Check whether --enable-multilib was given.
@@ -3330,7 +3345,26 @@ else
 fi
 
 
-if test "x$enable_multilib" != xno; then :
+
+# Check whether --with-multilib-generator was given.
+if test "${with_multilib_generator+set}" = set; then :
+  withval=$with_multilib_generator;
+else
+  with_multilib_generator=no
+
+fi
+
+
+if test "x$with_multilib_generator" != xno; then :
+  multilib_gen="$with_multilib_generator"
+
+else
+  multilib_gen=""
+
+fi
+
+
+if test "x$enable_multilib" != xno || test "x$with_multilib_generator" != xno; then :
   multilib_flags=--enable-multilib
 
 else
@@ -3339,7 +3373,7 @@ else
 fi
 
 if test "x$enable_multilib" != xno; then :
-  glibc_multilib_names="rv32imac-ilp32 rv32imafdc-ilp32d rv64imac-lp64 rv64imafdc-lp64d"
+  glibc_multilib_names="rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d  rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv"
 
 else
   glibc_multilib_names="$with_arch-$with_abi"
@@ -3347,7 +3381,9 @@ else
 fi
 
 if test "x$enable_multilib" != xno; then :
-  newlib_multilib_names="rv32i-ilp32 rv32iac-ilp32 rv32im-ilp32 rv32imac-ilp32 rv32imafc-ilp32f rv64imac-lp64 rv64imafdc-lp64d"
+  newlib_multilib_names="rv32ec-ilp32e rv32emc-ilp32e rv32i-ilp32 rv32im-ilp32 rv32iac-ilp32 rv32imac-ilp32 rv32imafc-ilp32f \
+                                         rv32imafdc-ilp32d rv32imafdcxtheade-ilp32d rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d \
+                                         rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv"
 
 else
   newlib_multilib_names="$with_arch-$with_abi"
@@ -3420,6 +3456,61 @@ if test "x$with_host" != xdefault; then :
 
 else
   configure_host=""
+
+fi
+
+
+# Check whether --with-gcc-dep-libs was given.
+if test "${with_gcc_dep_libs+set}" = set; then :
+  withval=$with_gcc_dep_libs;
+else
+  with_gcc_dep_libs=default
+
+fi
+
+
+if test "x$with_gcc_dep_libs" != xdefault; then :
+  NEED_GCC_EXTERNAL_LIBRARIES=false
+
+	configure_gcc_dep_libs=--with-gmp=$with_gcc_dep_libs\ --with-mpfr=$with_gcc_dep_libs\ --with-mpc=$with_gcc_dep_libs\ --with-libexpat-prefix=$with_gcc_dep_libs
+
+else
+  configure_gcc_dep_libs=""
+
+fi
+
+# Check whether --enable-install_strip was given.
+if test "${enable_install_strip+set}" = set; then :
+  enableval=$enable_install_strip;
+else
+  enable_install_strip=yes
+
+fi
+
+
+if test "x$enable_install_strip" != xno; then :
+  enable_install_strip=install-strip
+
+else
+  enable_install_strip=install
+
+fi
+
+
+# Check whether --with-pkgversion was given.
+if test "${with_pkgversion+set}" = set; then :
+  withval=$with_pkgversion;
+else
+  with_pkgversion=default
+
+fi
+
+
+if test "x$with_pkgversion" != xdefault; then :
+  configure_pkgversion=--with-pkgversion=\"$with_pkgversion\"
+
+else
+  configure_pkgversion=""
 
 fi
 

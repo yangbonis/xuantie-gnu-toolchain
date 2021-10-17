@@ -85,7 +85,7 @@ AS_IF([test "x$with_abi" = xdefault],
 
 AC_SUBST(WITH_ARCH, --with-arch=$with_arch)
 AC_SUBST(WITH_ABI, --with-abi=$with_abi)
-AC_SUBST(WITH_TUNE, --with-tune=$with_tune)
+AC_SUBST(WITH_TUNE,)
 
 AC_ARG_ENABLE(multilib,
 	[AS_HELP_STRING([--enable-multilib],
@@ -94,16 +94,30 @@ AC_ARG_ENABLE(multilib,
 	[enable_multilib=no]
 	)
 
-AS_IF([test "x$enable_multilib" != xno],
+AC_ARG_WITH(multilib-generator,
+	[AS_HELP_STRING([--with-multilib-generator],
+		[Multi-libs configuration string, only supported for bare-metal/elf toolchaih, this option implied --enable-multilib])],
+	[],
+	[with_multilib_generator=no]
+	)
+
+AS_IF([test "x$with_multilib_generator" != xno],
+        [AC_SUBST(multilib_gen,"$with_multilib_generator")],
+        [AC_SUBST(multilib_gen,"")])
+
+
+AS_IF([test "x$enable_multilib" != xno || test "x$with_multilib_generator" != xno],
         [AC_SUBST(multilib_flags,--enable-multilib)],
 	[AC_SUBST(multilib_flags,--disable-multilib)])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(glibc_multilib_names,"rv32imac-ilp32 rv32imafdc-ilp32d rv64imac-lp64 rv64imafdc-lp64d")],
+        [AC_SUBST(glibc_multilib_names,"rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d  rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv")],
         [AC_SUBST(glibc_multilib_names,"$with_arch-$with_abi")])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(newlib_multilib_names,"rv32i-ilp32 rv32iac-ilp32 rv32im-ilp32 rv32imac-ilp32 rv32imafc-ilp32f rv64imac-lp64 rv64imafdc-lp64d")],
+        [AC_SUBST(newlib_multilib_names,"rv32ec-ilp32e rv32emc-ilp32e rv32i-ilp32 rv32im-ilp32 rv32iac-ilp32 rv32imac-ilp32 rv32imafc-ilp32f \
+                                         rv32imafdc-ilp32d rv32imafdcxtheade-ilp32d rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d \
+                                         rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv")],
         [AC_SUBST(newlib_multilib_names,"$with_arch-$with_abi")])
 
 AC_ARG_ENABLE(gcc-checking,
@@ -155,6 +169,40 @@ AC_ARG_WITH(host,
 AS_IF([test "x$with_host" != xdefault],
 	[AC_SUBST(configure_host,--host=$with_host)],
 	[AC_SUBST(configure_host,"")])
+
+AC_ARG_WITH(gcc-dep-libs,
+	[AC_HELP_STRING([--with-gcc-dep-libs],
+			[Set prefix directory for installed GMP/MPFR/MPC package])],
+	[],
+	[with_gcc_dep_libs=default]
+	)
+
+AS_IF([test "x$with_gcc_dep_libs" != xdefault],
+	[AC_SUBST(NEED_GCC_EXTERNAL_LIBRARIES,false)]
+	[AC_SUBST(configure_gcc_dep_libs,--with-gmp=$with_gcc_dep_libs\ --with-mpfr=$with_gcc_dep_libs\ --with-mpc=$with_gcc_dep_libs\ --with-libexpat-prefix=$with_gcc_dep_libs)],
+	[AC_SUBST(configure_gcc_dep_libs,"")])
+
+AC_ARG_ENABLE(install_strip,
+	[AS_HELP_STRING([--disable-install-strip],
+		[Don't strip the executable file])],
+	[],
+	[enable_install_strip=yes]
+	)
+
+AS_IF([test "x$enable_install_strip" != xno],
+	[AC_SUBST(enable_install_strip, install-strip)],
+	[AC_SUBST(enable_install_strip, install)])
+
+AC_ARG_WITH(pkgversion,
+	[AC_HELP_STRING([--with-pkgversion],
+			[Set toolchain package version])],
+	[],
+	[with_pkgversion=default]
+	)
+
+AS_IF([test "x$with_pkgversion" != xdefault],
+	[AC_SUBST(configure_pkgversion,--with-pkgversion=\"$with_pkgversion\")],
+	[AC_SUBST(configure_pkgversion,"")])
 
 AC_ARG_WITH(system-zlib,
 	[AS_HELP_STRING([--without-system-zlib],

@@ -1,14 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (C) 2012 Regents of the University of California
- *
- *   This program is free software; you can redistribute it and/or
- *   modify it under the terms of the GNU General Public License
- *   as published by the Free Software Foundation, version 2.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
  */
 
 #ifndef _ASM_RISCV_PTRACE_H
@@ -83,6 +75,15 @@ union __riscv_fp_state {
 	struct __riscv_f_ext_state f;
 	struct __riscv_d_ext_state d;
 	struct __riscv_q_ext_state q;
+};
+
+struct __riscv_v_state {
+	__uint128_t v[32];
+	unsigned long vstart;
+	unsigned long vxsat;
+	unsigned long vxrm;
+	unsigned long vl;
+	unsigned long vtype;
 };
 
 #endif /* __ASSEMBLY__ */

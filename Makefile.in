@@ -10,6 +10,12 @@ MUSL_SRCDIR := @with_musl_src@
 LINUX_HEADERS_SRCDIR := @with_linux_headers_src@
 GDB_SRCDIR := @with_gdb_src@
 
+SIM:=qemu
+
+# Default branch for proxy kernel and spike
+SPIKE_BRANCH:=master
+PK_BRANCH:=master
+
 ifeq ($(srcdir)/riscv-gcc,$(GCC_SRCDIR))
 # We need a relative source dir for the gcc configure, to make msys2 mingw64
 # builds work.  Mayberelsrcdir is relative if a relative path was used to run
@@ -46,7 +52,14 @@ endif
 export PATH AWK SED
 
 MULTILIB_FLAGS := @multilib_flags@
+MULTILIB_GEN := @multilib_gen@
+ifeq ($(MULTILIB_GEN),)
 NEWLIB_MULTILIB_NAMES := @newlib_multilib_names@
+GCC_MULTILIB_FLAGS := $(MULTILIB_FLAGS)
+else
+NEWLIB_MULTILIB_NAMES := $(shell echo "$(MULTILIB_GEN)" | $(SED) 's/;/\n/g'| $(AWK) '{split($$0,a,"-"); printf "%s-%s ", a[1],a[2]}')
+GCC_MULTILIB_FLAGS := $(MULTILIB_FLAGS) --with-multilib-generator="$(MULTILIB_GEN)"
+endif
 GLIBC_MULTILIB_NAMES := @glibc_multilib_names@
 GCC_CHECKING_FLAGS := @gcc_checking@
 
@@ -84,6 +97,10 @@ MUSL_CC_FOR_TARGET ?= $(MUSL_TUPLE)-gcc
 MUSL_CXX_FOR_TARGET ?= $(MUSL_TUPLE)-g++
 
 CONFIGURE_HOST   = @configure_host@
+CONFIGURE_GCC_DEP_LIBS   = @configure_gcc_dep_libs@
+CONFIGURE_PKGVERSION = @configure_pkgversion@
+
+INSTALL = @enable_install_strip@
 
 all: @default_target@
 newlib: stamps/build-gcc-newlib-stage2
@@ -108,6 +125,7 @@ endif
 build-qemu: stamps/build-qemu
 
 REGRESSION_TEST_LIST = gcc
+REGRESSION_TEST_LIST_GCC ?=
 
 .PHONY: check
 check: check-@default_target@
@@ -148,6 +166,36 @@ report-binutils: report-binutils-@default_target@
 .PHONY: report-gdb
 report-gdb: report-gdb-@default_target@
 
+.PHONY: build-sim
+ifeq ($(SIM),qemu)
+SIM_PATH:=$(srcdir)/scripts/wrapper/qemu
+SIM_PREPARE:=PATH="$(SIM_PATH):$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)"
+SIM_STAMP:= stamps/build-qemu
+else
+ifeq ($(SIM),spike)
+# Using spike simulator.
+SIM_PATH:=$(srcdir)/scripts/wrapper/spike
+SIM_PREPARE:=PATH="$(SIM_PATH):$(INSTALL_DIR)/bin:$(PATH)" PK_PATH="$(INSTALL_DIR)/$(NEWLIB_TUPLE)/bin/"
+SIM_STAMP:= stamps/build-spike
+ifneq (,$(findstring rv32,$(NEWLIB_MULTILIB_NAMES)))
+SIM_STAMP+= stamps/build-pk32
+endif
+ifneq (,$(findstring rv64,$(NEWLIB_MULTILIB_NAMES)))
+SIM_STAMP+= stamps/build-pk64
+endif
+else
+ifeq ($(SIM),gdb)
+# Using gdb simulator.
+SIM_PATH:=$(INSTALL_DIR)/bin
+SIM_PREPARE:=
+else
+$(error "Only support SIM=spike, SIM=gdb or SIM=qemu (default).")
+endif
+endif
+endif
+
+build-sim: $(SIM_STAMP)
+
 stamps/check-write-permission:
 	mkdir -p $(INSTALL_DIR)/.test || \
 		(echo "Sorry, you don't have permission to write to" \
@@ -166,12 +214,48 @@ else
 endif
 	mkdir -p $(dir $@) && touch $@
 
+#
+# Rule for auto init submodules
+#
+
+ifeq ($(findstring $(srcdir),$(GCC_SRCDIR)),$(srcdir))
+GCC_SRC_GIT := $(GCC_SRCDIR)/.git
+else
+GCC_SRC_GIT :=
+endif
+
+ifeq ($(findstring $(srcdir),$(BINUTILS_SRCDIR)),$(srcdir))
+BINUTILS_SRC_GIT := $(BINUTILS_SRCDIR)/.git
+else
+BINUTILS_SRC_GIT :=
+endif
+
+ifeq ($(findstring $(srcdir),$(GDB_SRCDIR)),$(srcdir))
+GDB_SRC_GIT := $(GDB_SRCDIR)/.git
+else
+GDB_SRC_GIT :=
+endif
+
+ifeq ($(findstring $(srcdir),$(NEWLIB_SRCDIR)),$(srcdir))
+NEWLIB_SRC_GIT := $(NEWLIB_SRCDIR)/.git
+else
+NEWLIB_SRC_GIT :=
+endif
+
+ifeq ($(findstring $(srcdir),$(GLIBC_SRCDIR)),$(srcdir))
+GLIBC_SRC_GIT := $(GLIBC_SRCDIR)/.git
+else
+GLIBC_SRC_GIT :=
+endif
+
+$(srcdir)/%/.git:
+	cd $(srcdir)
 
 #
 # GLIBC
 #
 
-stamps/build-binutils-linux: $(BINUTILS_SRCDIR) stamps/check-write-permission
+stamps/build-binutils-linux: $(BINUTILS_SRCDIR) $(BINUTILS_SRC_GIT) stamps/check-write-permission
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 # CC_FOR_TARGET is required for the ld testsuite.
@@ -190,16 +274,18 @@ stamps/build-binutils-linux: $(BINUTILS_SRCDIR) stamps/check-write-permission
 		--disable-libdecnumber \
 		--disable-readline
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gdb-linux: $(GDB_SRCDIR)
+stamps/build-gdb-linux: $(GDB_SRCDIR) $(GDB_SRC_GIT)
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 # CC_FOR_TARGET is required for the ld testsuite.
 	cd $(notdir $@) && CC_FOR_TARGET=$(GLIBC_CC_FOR_TARGET) $</configure \
 		--target=$(LINUX_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR) \
 		--with-sysroot=$(SYSROOT) \
 		$(MULTILIB_FLAGS) \
@@ -214,10 +300,10 @@ stamps/build-gdb-linux: $(GDB_SRCDIR)
 		--disable-gold \
 		--disable-gprof
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-glibc-linux-headers: $(GLIBC_SRCDIR) stamps/build-gcc-linux-stage1
+stamps/build-glibc-linux-headers: $(GLIBC_SRCDIR) $(GLIBC_SRC_GIT) stamps/build-gcc-linux-stage1
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && CC="$(GLIBC_CC_FOR_TARGET)" $</configure \
@@ -230,7 +316,7 @@ stamps/build-glibc-linux-headers: $(GLIBC_SRCDIR) stamps/build-gcc-linux-stage1
 	$(MAKE) -C $(notdir $@) install-headers
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-glibc-linux-%: $(GLIBC_SRCDIR) stamps/build-gcc-linux-stage1
+stamps/build-glibc-linux-%: $(GLIBC_SRCDIR) $(GLIBC_SRC_GIT) stamps/build-gcc-linux-stage1
 ifeq ($(MULTILIB_FLAGS),--enable-multilib)
 	$(eval $@_ARCH := $(word 4,$(subst -, ,$@)))
 	$(eval $@_ABI := $(word 5,$(subst -, ,$@)))
@@ -238,7 +324,7 @@ else
 	$(eval $@_ARCH := )
 	$(eval $@_ABI := )
 endif
-	$(eval $@_LIBDIRSUFFIX := $(if $($@_ABI),$(shell echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1/')/$($@_ABI),))
+	$(eval $@_LIBDIRSUFFIX := $(if $($@_ABI), $(shell if [ `echo $($@_ARCH) | grep "vxtheadc" ` ] ;then  echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1vxthead/'; elif [ `echo $($@_ARCH) | grep "xtheadc" ` ] ;then echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1xthead/'; else echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1/';fi )/$($@_ABI),))
 	$(eval $@_XLEN := $(if $($@_ABI),$(shell echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1/'),$(XLEN)))
 	$(eval $@_CFLAGS := $(if $($@_ABI),-march=$($@_ARCH) -mabi=$($@_ABI),))
 	$(eval $@_LIBDIROPTS := $(if $@_LIBDIRSUFFIX,--libdir=/usr/lib$($@_LIBDIRSUFFIX) libc_cv_slibdir=/lib$($@_LIBDIRSUFFIX) libc_cv_rtlddir=/lib,))
@@ -262,10 +348,11 @@ endif
 		$(GLIBC_TARGET_FLAGS) \
 		$($@_LIBDIROPTS)
 	$(MAKE) -C $(notdir $@)
-	+flock $(SYSROOT)/.lock $(MAKE) -C $(notdir $@) install install_root=$(SYSROOT)
+	#+flock $(SYSROOT)/.lock $(MAKE) -C $(notdir $@) install install_root=$(SYSROOT)
+	+$(MAKE) -C $(notdir $@) install install_root=$(SYSROOT)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-linux-stage1: $(GCC_SRCDIR) stamps/build-binutils-linux \
+stamps/build-gcc-linux-stage1: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-binutils-linux \
                                stamps/build-linux-headers
 	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" = "true"; then cd $< && ./contrib/download_prerequisites; fi
 	rm -rf $@ $(notdir $@)
@@ -273,6 +360,7 @@ stamps/build-gcc-linux-stage1: $(GCC_SRCDIR) stamps/build-binutils-linux \
 	cd $(notdir $@) && $</configure \
 		--target=$(LINUX_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
 		--prefix=$(INSTALL_DIR) \
 		--with-sysroot=$(SYSROOT) \
 		--with-newlib \
@@ -303,7 +391,7 @@ stamps/build-gcc-linux-stage1: $(GCC_SRCDIR) stamps/build-binutils-linux \
 	$(MAKE) -C $(notdir $@) inhibit-libc=true install-target-libgcc
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-linux-stage2: $(GCC_SRCDIR) $(addprefix stamps/build-glibc-linux-,$(GLIBC_MULTILIB_NAMES)) \
+stamps/build-gcc-linux-stage2: $(GCC_SRCDIR) $(GCC_SRC_GIT) $(addprefix stamps/build-glibc-linux-,$(GLIBC_MULTILIB_NAMES)) \
                                stamps/build-glibc-linux-headers
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
@@ -313,6 +401,8 @@ stamps/build-gcc-linux-stage2: $(GCC_SRCDIR) $(addprefix stamps/build-glibc-linu
 	cd $(notdir $@) && $</configure \
 		--target=$(LINUX_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR) \
 		--with-sysroot=$(SYSROOT) \
 		@with_system_zlib@ \
@@ -334,11 +424,11 @@ stamps/build-gcc-linux-stage2: $(GCC_SRCDIR) $(addprefix stamps/build-glibc-linu
 		CFLAGS_FOR_TARGET="-O2 $(CFLAGS_FOR_TARGET)" \
 		CXXFLAGS_FOR_TARGET="-O2 $(CXXFLAGS_FOR_TARGET)"
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	cp -a $(INSTALL_DIR)/$(LINUX_TUPLE)/lib* $(SYSROOT)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-binutils-linux-native: $(BINUTILS_SRCDIR) stamps/build-gcc-linux-stage2 stamps/check-write-permission
+stamps/build-binutils-linux-native: $(BINUTILS_SRCDIR) $(BINUTILS_SRC_GIT) stamps/build-gcc-linux-stage2 stamps/check-write-permission
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
@@ -356,10 +446,10 @@ stamps/build-binutils-linux-native: $(BINUTILS_SRCDIR) stamps/build-gcc-linux-st
 		--disable-libdecnumber \
 		--disable-readline
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-linux-native: $(GCC_SRCDIR) stamps/build-gcc-linux-stage2 stamps/build-binutils-linux-native
+stamps/build-gcc-linux-native: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-gcc-linux-stage2 stamps/build-binutils-linux-native
 	if test -f $</contrib/download_prerequisites; then cd $< && ./contrib/download_prerequisites; fi
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
@@ -367,6 +457,8 @@ stamps/build-gcc-linux-native: $(GCC_SRCDIR) stamps/build-gcc-linux-stage2 stamp
 		--host=$(LINUX_TUPLE) \
 		--target=$(LINUX_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR)/native \
 		--without-system-zlib \
 		--enable-shared \
@@ -384,7 +476,7 @@ stamps/build-gcc-linux-native: $(GCC_SRCDIR) stamps/build-gcc-linux-stage2 stamp
 		$(WITH_ARCH) \
 		$(WITH_TUNE)
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	cp -a $(INSTALL_DIR)/$(LINUX_TUPLE)/lib* $(SYSROOT)
 	mkdir -p $(dir $@) && touch $@
 
@@ -392,7 +484,7 @@ stamps/build-gcc-linux-native: $(GCC_SRCDIR) stamps/build-gcc-linux-stage2 stamp
 # NEWLIB
 #
 
-stamps/build-binutils-newlib: $(BINUTILS_SRCDIR) stamps/check-write-permission
+stamps/build-binutils-newlib: $(BINUTILS_SRCDIR) $(BINUTILS_SRC_GIT) stamps/check-write-permission
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 # CC_FOR_TARGET is required for the ld testsuite.
@@ -408,16 +500,18 @@ stamps/build-binutils-newlib: $(BINUTILS_SRCDIR) stamps/check-write-permission
 		--disable-libdecnumber \
 		--disable-readline
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gdb-newlib: $(GDB_SRCDIR)
+stamps/build-gdb-newlib: $(GDB_SRCDIR) $(GDB_SRC_GIT)
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 # CC_FOR_TARGET is required for the ld testsuite.
 	cd $(notdir $@) && CC_FOR_TARGET=$(NEWLIB_CC_FOR_TARGET) $</configure \
 		--target=$(NEWLIB_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR) \
 		@with_guile@ \
 		--disable-werror \
@@ -429,16 +523,17 @@ stamps/build-gdb-newlib: $(GDB_SRCDIR)
 		--disable-gold \
 		--disable-gprof
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-newlib-stage1: $(GCC_SRCDIR) stamps/build-binutils-newlib
+stamps/build-gcc-newlib-stage1: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-binutils-newlib
 	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" = "true"; then cd $< && ./contrib/download_prerequisites; fi
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
 		--target=$(NEWLIB_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
 		--prefix=$(INSTALL_DIR) \
 		--disable-shared \
 		--disable-threads \
@@ -455,7 +550,7 @@ stamps/build-gcc-newlib-stage1: $(GCC_SRCDIR) stamps/build-binutils-newlib
 		--disable-tm-clone-registry \
 		--src=$(gccsrcdir) \
 		$(GCC_CHECKING_FLAGS) \
-		$(MULTILIB_FLAGS) \
+		$(GCC_MULTILIB_FLAGS) \
 		$(WITH_ABI) \
 		$(WITH_ARCH) \
 		$(WITH_TUNE) \
@@ -465,7 +560,7 @@ stamps/build-gcc-newlib-stage1: $(GCC_SRCDIR) stamps/build-binutils-newlib
 	$(MAKE) -C $(notdir $@) install-gcc
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-newlib: $(NEWLIB_SRCDIR) stamps/build-gcc-newlib-stage1
+stamps/build-newlib: $(NEWLIB_SRCDIR) $(NEWLIB_SRC_GIT) stamps/build-gcc-newlib-stage1
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
@@ -482,7 +577,7 @@ stamps/build-newlib: $(NEWLIB_SRCDIR) stamps/build-gcc-newlib-stage1
 	$(MAKE) -C $(notdir $@) install
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-newlib-nano: $(NEWLIB_SRCDIR) stamps/build-gcc-newlib-stage1
+stamps/build-newlib-nano: $(NEWLIB_SRCDIR) $(NEWLIB_SRC_GIT) stamps/build-gcc-newlib-stage1
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
@@ -509,7 +604,7 @@ stamps/build-newlib-nano: $(NEWLIB_SRCDIR) stamps/build-gcc-newlib-stage1
 stamps/merge-newlib-nano: stamps/build-newlib-nano stamps/build-newlib
 # Copy nano library files into newlib install dir.
 	set -e; \
-        for ml in `$(INSTALL_DIR)/bin/$(NEWLIB_TUPLE)-gcc --print-multi-lib`; \
+        for ml in `$(NEWLIB_TUPLE)-gcc --print-multi-lib`; \
 	do \
 	    mld=`echo $${ml} | sed -e 's/;.*$$//'`; \
 	    cp $(builddir)/install-newlib-nano/$(NEWLIB_TUPLE)/lib/$${mld}/libc.a \
@@ -529,13 +624,15 @@ stamps/merge-newlib-nano: stamps/build-newlib-nano stamps/build-newlib
 		$(INSTALL_DIR)/$(NEWLIB_TUPLE)/include/newlib-nano/newlib.h; \
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-newlib-stage2: $(GCC_SRCDIR) stamps/build-newlib \
+stamps/build-gcc-newlib-stage2: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-newlib \
 		stamps/merge-newlib-nano
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
 		--target=$(NEWLIB_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR) \
 		--disable-shared \
 		--disable-threads \
@@ -553,21 +650,21 @@ stamps/build-gcc-newlib-stage2: $(GCC_SRCDIR) stamps/build-newlib \
 		--disable-tm-clone-registry \
 		--src=$(gccsrcdir) \
 		$(GCC_CHECKING_FLAGS) \
-		$(MULTILIB_FLAGS) \
+		$(GCC_MULTILIB_FLAGS) \
 		$(WITH_ABI) \
 		$(WITH_ARCH) \
 		$(WITH_TUNE) \
 		CFLAGS_FOR_TARGET="-Os $(CFLAGS_FOR_TARGET)" \
 		CXXFLAGS_FOR_TARGET="-Os $(CXXFLAGS_FOR_TARGET)"
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
 #
 # MUSL
 #
 
-stamps/build-binutils-musl: $(BINUTILS_SRCDIR) stamps/check-write-permission
+stamps/build-binutils-musl: $(BINUTILS_SRCDIR) $(BINUTILS_SRC_GIT) stamps/check-write-permission
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 # CC_FOR_TARGET is required for the ld testsuite.
@@ -586,10 +683,10 @@ stamps/build-binutils-musl: $(BINUTILS_SRCDIR) stamps/check-write-permission
 		--disable-libdecnumber \
 		--disable-readline
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-musl-stage1: $(GCC_SRCDIR) stamps/build-binutils-musl \
+stamps/build-gcc-musl-stage1: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-binutils-musl \
                                stamps/build-linux-headers
 	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" = "true"; then cd $< && ./contrib/download_prerequisites; fi
 	rm -rf $@ $(notdir $@)
@@ -597,6 +694,7 @@ stamps/build-gcc-musl-stage1: $(GCC_SRCDIR) stamps/build-binutils-musl \
 	cd $(notdir $@) && $</configure \
 		--target=$(MUSL_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
 		--prefix=$(INSTALL_DIR) \
 		--without-headers \
 		--disable-shared \
@@ -654,16 +752,21 @@ stamps/build-musl-linux: $(MUSL_SRCDIR) stamps/build-gcc-musl-stage1
 		--enable-shared \
 		$(MUSL_TARGET_FLAGS)
 	$(MAKE) -C $(notdir $@)
-	+flock $(SYSROOT)/.lock $(MAKE) -C $(notdir $@) install
+	#+flock $(SYSROOT)/.lock $(MAKE) -C $(notdir $@) install
+	+$(MAKE) -C $(notdir $@) install
 	mkdir -p $(dir $@) && touch $@
 
-stamps/build-gcc-musl-stage2: $(GCC_SRCDIR) stamps/build-musl-linux \
+stamps/build-gcc-musl-stage2: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-musl-linux \
                                stamps/build-musl-linux-headers
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
+	# Disable libsanitizer for now
+	# https://github.com/google/sanitizers/issues/1080
 	cd $(notdir $@) && $</configure \
 		--target=$(MUSL_TUPLE) \
 		$(CONFIGURE_HOST) \
+		$(CONFIGURE_GCC_DEP_LIBS) \
+		$(CONFIGURE_PKGVERSION) \
 		--prefix=$(INSTALL_DIR) \
 		--with-sysroot=$(SYSROOT) \
 		@with_system_zlib@ \
@@ -673,6 +776,7 @@ stamps/build-gcc-musl-stage2: $(GCC_SRCDIR) stamps/build-musl-linux \
 		--disable-libmudflap \
 		--disable-libssp \
 		--disable-libquadmath \
+		--disable-libsanitizer \
 		--disable-nls \
 		--disable-bootstrap \
 		--src=$(gccsrcdir) \
@@ -684,12 +788,51 @@ stamps/build-gcc-musl-stage2: $(GCC_SRCDIR) stamps/build-musl-linux \
 		CFLAGS_FOR_TARGET="-O2 $(CFLAGS_FOR_TARGET)" \
 		CXXFLAGS_FOR_TARGET="-O2 $(CXXFLAGS_FOR_TARGET)"
 	$(MAKE) -C $(notdir $@)
-	$(MAKE) -C $(notdir $@) install
+	$(MAKE) -C $(notdir $@) $(INSTALL)
 	cp -a $(INSTALL_DIR)/$(MUSL_TUPLE)/lib* $(SYSROOT)
 	mkdir -p $(dir $@) && touch $@
 
+spike-src:
+	git clone https://github.com/riscv/riscv-isa-sim.git -b $(SPIKE_BRANCH) $@
 
-stamps/build-qemu: $(srcdir)/qemu
+pk-src:
+	git clone https://github.com/riscv/riscv-pk.git -b $(PK_BRANCH) $@
+
+stamps/build-spike: spike-src
+	rm -rf $@ $(notdir $@)
+	mkdir $(notdir $@)
+	cd $(notdir $@) && ../$</configure \
+		--prefix=$(INSTALL_DIR)
+	$(MAKE) -C $(notdir $@)
+	$(MAKE) -C $(notdir $@) install
+	mkdir -p $(dir $@)
+	date > $@
+
+stamps/build-pk32: pk-src stamps/build-gcc-newlib-stage2
+	rm -rf $@ $(notdir $@)
+	mkdir $(notdir $@)
+	cd $(notdir $@) && ../$</configure \
+		--prefix=$(INSTALL_DIR) \
+		--host=$(NEWLIB_TUPLE) \
+		--with-arch=rv32gc
+	$(MAKE) -C $(notdir $@)
+	cp $(notdir $@)/pk $(INSTALL_DIR)/$(NEWLIB_TUPLE)/bin/pk32
+	mkdir -p $(dir $@)
+	date > $@
+
+stamps/build-pk64: pk-src stamps/build-gcc-newlib-stage2
+	rm -rf $@ $(notdir $@)
+	mkdir $(notdir $@)
+	cd $(notdir $@) && ../$</configure \
+		--prefix=$(INSTALL_DIR) \
+		--host=$(NEWLIB_TUPLE) \
+		--with-arch=rv64gc
+	$(MAKE) -C $(notdir $@)
+	cp $(notdir $@)/pk $(INSTALL_DIR)/$(NEWLIB_TUPLE)/bin/pk64
+	mkdir -p $(dir $@)
+	date > $@
+
+stamps/build-qemu: $(srcdir)/qemu $(srcdir)/qemu/.git
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
@@ -702,7 +845,7 @@ stamps/build-qemu: $(srcdir)/qemu
 	mkdir -p $(dir $@)
 	date > $@
 
-stamps/build-dejagnu: $(srcdir)/riscv-dejagnu
+stamps/build-dejagnu: $(srcdir)/riscv-dejagnu $(srcdir)/riscv-dejagnu/.git
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && $</configure \
@@ -712,18 +855,18 @@ stamps/build-dejagnu: $(srcdir)/riscv-dejagnu
 	mkdir -p $(dir $@)
 	date > $@
 
-stamps/check-gcc-newlib: stamps/build-gcc-newlib-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gcc-newlib-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)'"
+stamps/check-gcc-newlib: stamps/build-gcc-newlib-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gcc-newlib-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)' $(REGRESSION_TEST_LIST_GCC)"
 	mkdir -p $(dir $@)
 	date > $@
 
-stamps/check-gcc-newlib-nano: stamps/build-gcc-newlib-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gcc-newlib-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)'"
+stamps/check-gcc-newlib-nano: stamps/build-gcc-newlib-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gcc-newlib-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)' $(REGRESSION_TEST_LIST_GCC)"
 	mkdir -p $(dir $@)
 	date > $@
 
-stamps/check-gcc-linux: stamps/build-gcc-linux-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gcc-linux-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)'"
+stamps/check-gcc-linux: stamps/build-gcc-linux-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gcc-linux-stage2 check-gcc "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)' $(REGRESSION_TEST_LIST_GCC)"
 	mkdir -p $(dir $@)
 	date > $@
 
@@ -733,56 +876,56 @@ check-dhrystone-newlib-nano: $(patsubst %,stamps/check-dhrystone-newlib-nano-%,$
 
 stamps/check-dhrystone-newlib-%: \
 		stamps/build-gcc-newlib-stage2 \
-		stamps/build-qemu \
+		$(SIM_STAMP) \
 		$(wildcard $(srcdir)/test/benchmarks/dhrystone/*)
 	$(eval $@_ARCH := $(word 4,$(subst -, ,$@)))
 	$(eval $@_ABI := $(word 5,$(subst -, ,$@)))
 	$(eval $@_XLEN := $(patsubst rv32%,32,$(patsubst rv64%,64,$($@_ARCH))))
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
+	$(SIM_PREPARE) $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
 
 stamps/check-dhrystone-newlib-nano-%: \
 		stamps/build-gcc-newlib-stage2 \
-		stamps/build-qemu \
+		$(SIM_STAMP) \
 		$(wildcard $(srcdir)/test/benchmarks/dhrystone/*)
 	$(eval $@_ARCH := $(word 5,$(subst -, ,$@)))
 	$(eval $@_ABI := $(word 6,$(subst -, ,$@)))
 	$(eval $@_XLEN := $(patsubst rv32%,32,$(patsubst rv64%,64,$($@_ARCH))))
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -specs=nano.specs -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
+	$(SIM_PREPARE) $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -specs=nano.specs -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
 
 .PHONY: check-dhrystone-linux
 check-dhrystone-linux: $(patsubst %,stamps/check-dhrystone-linux-%,$(GLIBC_MULTILIB_NAMES))
 
 stamps/check-dhrystone-linux-%: \
 		stamps/build-gcc-linux-stage2 \
-		stamps/build-qemu \
+		$(SIM_STAMP) \
 		$(wildcard $(srcdir)/test/benchmarks/dhrystone/*)
 	$(eval $@_ARCH := $(word 4,$(subst -, ,$@)))
 	$(eval $@_ABI := $(word 5,$(subst -, ,$@)))
 	$(eval $@_XLEN := $(patsubst rv32%,32,$(patsubst rv64%,64,$($@_ARCH))))
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
+	$(SIM_PREPARE) $(srcdir)/test/benchmarks/dhrystone/check -march=$($@_ARCH) -mabi=$($@_ABI) -cc=riscv$(XLEN)-unknown-elf-gcc -objdump=riscv$(XLEN)-unknown-elf-objdump -sim=riscv$($@_XLEN)-unknown-elf-run -out=$@ $(filter %.c,$^) || true
 
-stamps/check-binutils-newlib: stamps/build-gcc-newlib-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-binutils-newlib check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)'" || true
+stamps/check-binutils-newlib: stamps/build-gcc-newlib-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-binutils-newlib check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)'" || true
 	date > $@
 
-stamps/check-binutils-newlib-nano: stamps/build-gcc-newlib-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-binutils-newlib check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)'" || true
+stamps/check-binutils-newlib-nano: stamps/build-gcc-newlib-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-binutils-newlib check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)'" || true
 	date > $@
 
-stamps/check-binutils-linux: stamps/build-gcc-linux-stage2 stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-binutils-linux check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)'" || true
+stamps/check-binutils-linux: stamps/build-gcc-linux-stage2 $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-binutils-linux check-binutils check-gas check-ld -k "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)'" || true
 	date > $@
 
-stamps/check-gdb-newlib: stamps/build-gcc-newlib-stage2 stamps/build-gdb-newlib stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gdb-newlib check-gdb -k "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)'" || true
+stamps/check-gdb-newlib: stamps/build-gcc-newlib-stage2 stamps/build-gdb-newlib $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gdb-newlib check-gdb -k "RUNTESTFLAGS=--target_board='$(NEWLIB_TARGET_BOARDS)'" || true
 	date > $@
 
-stamps/check-gdb-newlib-nano: stamps/build-gcc-newlib-stage2 stamps/build-gdb-newlib stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gdb-newlib check-gdb -k "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)'" || true
+stamps/check-gdb-newlib-nano: stamps/build-gcc-newlib-stage2 stamps/build-gdb-newlib $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gdb-newlib check-gdb -k "RUNTESTFLAGS=--target_board='$(NEWLIB_NANO_TARGET_BOARDS)'" || true
 	date > $@
 
-stamps/check-gdb-linux: stamps/build-gcc-linux-stage2 stamps/build-gdb-linux stamps/build-qemu stamps/build-dejagnu
-	PATH="$(srcdir)/scripts/wrapper/qemu:$(INSTALL_DIR)/bin:$(PATH)" RISC_V_SYSROOT="$(SYSROOT)" $(MAKE) -C build-gdb-linux check-gdb -k "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)'" || true
+stamps/check-gdb-linux: stamps/build-gcc-linux-stage2 stamps/build-gdb-linux $(SIM_STAMP) stamps/build-dejagnu
+	$(SIM_PREPARE) $(MAKE) -C build-gdb-linux check-gdb -k "RUNTESTFLAGS=--target_board='$(GLIBC_TARGET_BOARDS)'" || true
 	date > $@
 
 .PHONY: report-gcc-newlib report-gcc-newlib-nano
