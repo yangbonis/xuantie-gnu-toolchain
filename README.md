@@ -5,6 +5,10 @@ This is the T-HEAD C and C++ cross-compiler. It supports two build modes:
 a generic ELF/Newlib toolchain and a more sophisticated Linux-ELF/glibc
 toolchain.
 
+Prebuild toolchain can be downloaded from resource center of OCC: https://occ.t-head.cn/community/download
+
+For more information and getting technical support, please visit OCC website (Open Chip Community)：https://occ.t-head.cn/
+
 ###  Getting the sources
 
 This repository uses submodules, but submodules will fetch automatically on demand,
