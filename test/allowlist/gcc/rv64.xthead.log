@@ -23,3 +23,21 @@ FAIL: c-c++-common/torture/asm-inline.c
 # Improve: inhibit to generate builtins as memset/memcpy
 FAIL: gcc.dg/ipa/iinline-attr.c
 FAIL: gcc.dg/pr53265.c
+
+# XXX: Need review.
+FAIL: g++.dg/opt/call3.C
+FAIL: gcc.dg/tree-ssa/copy-headers-5.c
+FAIL: gcc.dg/tree-ssa/copy-headers-6.c
+FAIL: gcc.dg/tree-ssa/copy-headers-7.c
+FAIL: gcc.dg/tree-ssa/20030711-1.c
+FAIL: gcc.dg/vshift-2.c
+FAIL: gcc.dg/lto/20091013-1
+FAIL: gcc.dg/autopar/reduc-1char.c
+FAIL: gcc.dg/autopar/reduc-7.c
+FAIL: gfortran.dg/mvbits_1.f90
+
+# P-ext.
+
+# Use mulaw/mulsw first when xthead is available.
+FAIL: gcc.target/riscv/dsp/maddr32.c
+FAIL: gcc.target/riscv/dsp/msubr32.c

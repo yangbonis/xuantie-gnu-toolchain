@@ -585,6 +585,7 @@ PACKAGE_URL=''
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 with_linux_headers_src
+enable_libsanitizer
 with_gdb_src
 with_musl_src
 with_glibc_src
@@ -603,6 +604,8 @@ target_cflags
 cmodel
 gcc_checking
 newlib_multilib_names
+musl32_multilib_names
+musl64_multilib_names
 glibc_multilib_names
 multilib_flags
 multilib_gen
@@ -693,6 +696,7 @@ with_glibc_src
 with_musl_src
 with_gdb_src
 with_linux_headers_src
+enable_libsanitizer
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1331,6 +1335,7 @@ Optional Features:
                           [--disable-gcc-checking]
   --disable-install-strip Don't strip the executable file
   --disable-gdb           Don't build GDB, as it's not upstream
+  --enable-libsanitizer   Build libsanitizer, which only supports rv64
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -3303,7 +3308,7 @@ fi
 if test "${with_tune+set}" = set; then :
   withval=$with_tune;
 else
-  with_tune=rocket
+  with_tune=default
 
 fi
 
@@ -3335,6 +3340,13 @@ WITH_ARCH=--with-arch=$with_arch
 WITH_ABI=--with-abi=$with_abi
 
 
+if test "x$with_tune" != xdefault; then :
+  WITH_TUNE=--with-tune=$with_tune
+
+else
+  WITH_TUNE=""
+
+fi
 
 # Check whether --enable-multilib was given.
 if test "${enable_multilib+set}" = set; then :
@@ -3373,7 +3385,8 @@ else
 fi
 
 if test "x$enable_multilib" != xno; then :
-  glibc_multilib_names="rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d  rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv"
+  glibc_multilib_names="rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
+                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d"
 
 else
   glibc_multilib_names="$with_arch-$with_abi"
@@ -3381,9 +3394,27 @@ else
 fi
 
 if test "x$enable_multilib" != xno; then :
+  musl64_multilib_names="rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
+                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d"
+
+else
+  musl64_multilib_names="$with_arch-$with_abi"
+
+fi
+
+if test "x$enable_multilib" != xno; then :
+  musl32_multilib_names="rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d"
+
+else
+  musl32_multilib_names="$with_arch-$with_abi"
+
+fi
+
+if test "x$enable_multilib" != xno; then :
   newlib_multilib_names="rv32ec-ilp32e rv32emc-ilp32e rv32i-ilp32 rv32im-ilp32 rv32iac-ilp32 rv32imac-ilp32 rv32imafc-ilp32f \
-                                         rv32imafdc-ilp32d rv32imafdcxtheade-ilp32d rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d \
-                                         rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv"
+                                         rv32imafdc-ilp32d rv32imafdc_xtheade-ilp32d rv32imafdc_zfh_xtheadc-ilp32d \
+                                         rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d \
+                                         rv64imafdcv_zfh_xtheadc-lp64d rv64imafdc_v0p7_zfh_xtheadc-lp64d"
 
 else
   newlib_multilib_names="$with_arch-$with_abi"
@@ -3693,6 +3724,23 @@ else
 
 fi
 
+
+# Check whether --enable-libsanitizer was given.
+if test "${enable_libsanitizer+set}" = set; then :
+  enableval=$enable_libsanitizer;
+else
+  enable_libsanitizer=yes
+
+fi
+
+
+if test "x$enable_libsanitizer" != xno; then :
+  enable_libsanitizer=--enable-libsanitizer
+
+else
+  enable_libsanitizer=--disable-libsanitizer
+
+fi
 
 if test "x$with_linux_headers_src" != xdefault; then :
   with_linux_headers_src=$with_linux_headers_src

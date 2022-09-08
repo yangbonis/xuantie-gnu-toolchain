@@ -68,7 +68,7 @@ AC_ARG_WITH(tune,
 	[AS_HELP_STRING([--with-tune=rocket],
 		[Set the base RISC-V CPU, defaults to rocket])],
 	[],
-	[with_tune=rocket]
+	[with_tune=default]
 	)
 
 AS_IF([test "x$with_abi" = xdefault],
@@ -86,6 +86,9 @@ AS_IF([test "x$with_abi" = xdefault],
 AC_SUBST(WITH_ARCH, --with-arch=$with_arch)
 AC_SUBST(WITH_ABI, --with-abi=$with_abi)
 AC_SUBST(WITH_TUNE,)
+AS_IF([test "x$with_tune" != xdefault],
+	[AC_SUBST(WITH_TUNE, --with-tune=$with_tune)],
+	[AC_SUBST(WITH_TUNE, "")])
 
 AC_ARG_ENABLE(multilib,
 	[AS_HELP_STRING([--enable-multilib],
@@ -111,13 +114,24 @@ AS_IF([test "x$enable_multilib" != xno || test "x$with_multilib_generator" != xn
 	[AC_SUBST(multilib_flags,--disable-multilib)])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(glibc_multilib_names,"rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d  rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv")],
+        [AC_SUBST(glibc_multilib_names,"rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
+                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d")],
         [AC_SUBST(glibc_multilib_names,"$with_arch-$with_abi")])
 
 AS_IF([test "x$enable_multilib" != xno],
+        [AC_SUBST(musl64_multilib_names,"rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
+                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d")],
+        [AC_SUBST(musl64_multilib_names,"$with_arch-$with_abi")])
+
+AS_IF([test "x$enable_multilib" != xno],
+        [AC_SUBST(musl32_multilib_names,"rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d")],
+        [AC_SUBST(musl32_multilib_names,"$with_arch-$with_abi")])
+
+AS_IF([test "x$enable_multilib" != xno],
         [AC_SUBST(newlib_multilib_names,"rv32ec-ilp32e rv32emc-ilp32e rv32i-ilp32 rv32im-ilp32 rv32iac-ilp32 rv32imac-ilp32 rv32imafc-ilp32f \
-                                         rv32imafdc-ilp32d rv32imafdcxtheade-ilp32d rv64imac-lp64 rv64imacxtheadc-lp64 rv64imafdc-lp64d rv64imafdcxtheadc-lp64d \
-                                         rv64imafdcvxtheadc-lp64d rv64imafdcvxtheadc-lp64v rv64imafdcvxtheadc-lp64dv")],
+                                         rv32imafdc-ilp32d rv32imafdc_xtheade-ilp32d rv32imafdc_zfh_xtheadc-ilp32d \
+                                         rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d \
+                                         rv64imafdcv_zfh_xtheadc-lp64d rv64imafdc_v0p7_zfh_xtheadc-lp64d")],
         [AC_SUBST(newlib_multilib_names,"$with_arch-$with_abi")])
 
 AC_ARG_ENABLE(gcc-checking,
@@ -264,6 +278,17 @@ AC_ARG_WITH(linux-headers-src,
 	[],
 	[with_linux_headers_src=default]
 	)
+
+AC_ARG_ENABLE(libsanitizer,
+	[AS_HELP_STRING([--enable-libsanitizer],
+		[Build libsanitizer, which only supports rv64])],
+	[],
+	[enable_libsanitizer=yes]
+	)
+
+AS_IF([test "x$enable_libsanitizer" != xno],
+	[AC_SUBST(enable_libsanitizer, --enable-libsanitizer)],
+	[AC_SUBST(enable_libsanitizer, --disable-libsanitizer)])
 
 AS_IF([test "x$with_linux_headers_src" != xdefault],
 	[AC_SUBST(with_linux_headers_src,$with_linux_headers_src)],

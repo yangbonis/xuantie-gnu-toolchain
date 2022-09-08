@@ -78,13 +78,17 @@ union __riscv_fp_state {
 };
 
 struct __riscv_v_state {
+#if __riscv_xlen == 32
+	__u64 v[64];
+#else
 	__uint128_t v[32];
+#endif
 	unsigned long vstart;
 	unsigned long vxsat;
 	unsigned long vxrm;
 	unsigned long vl;
 	unsigned long vtype;
-};
+} __attribute__((aligned(16)));
 
 #endif /* __ASSEMBLY__ */
 
