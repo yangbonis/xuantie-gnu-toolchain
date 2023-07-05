@@ -348,7 +348,7 @@ endif
 	$(eval $@_LIBDIRSUFFIX := $(if $($@_ABI), $(shell if [ `echo $($@_ARCH) | grep "v0p7_zfh_xtheadc" ` ] ;then  echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1v0p7_xthead/'; elif [ `echo $($@_ARCH) | grep "v_zfh_xtheadc" ` ] ;then  echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1v_xthead/'; elif [ `echo $($@_ARCH) | grep "xtheadc" ` ] ;then echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1xthead/'; else echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1/';fi )/$($@_ABI),))
 	$(eval $@_XLEN := $(if $($@_ABI),$(shell echo $($@_ARCH) | sed 's/.*rv\([0-9]*\).*/\1/'),$(XLEN)))
 	$(eval $@_CFLAGS := $(if $($@_ABI),-march=$($@_ARCH) -mabi=$($@_ABI),))
-	$(eval $@_LIBDIROPTS := $(if $@_LIBDIRSUFFIX,--libdir=/usr/lib$($@_LIBDIRSUFFIX) libc_cv_slibdir=/lib$($@_LIBDIRSUFFIX) libc_cv_rtlddir=/lib,))
+	$(eval $@_LIBDIROPTS := --libdir=/usr/lib$($@_LIBDIRSUFFIX) libc_cv_slibdir=/lib$($@_LIBDIRSUFFIX) libc_cv_rtlddir=/$(shell if [ `echo $($@_ARCH) | grep "thead" ` ] ;then echo x; fi)lib)
 	rm -rf $@ $(notdir $@)
 	mkdir $(notdir $@)
 	cd $(notdir $@) && \
@@ -370,6 +370,7 @@ endif
 		$($@_LIBDIROPTS)
 	$(MAKE) -C $(notdir $@)
 	+flock $(SYSROOT)/.lock $(MAKE) -C $(notdir $@) install install_root=$(SYSROOT)
+	rm -rf $(SYSROOT)/xlib
 	mkdir -p $(dir $@) && touch $@
 
 stamps/build-gcc-linux-stage1: $(GCC_SRCDIR) $(GCC_SRC_GIT) stamps/build-binutils-linux \
