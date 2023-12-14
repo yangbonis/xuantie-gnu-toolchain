@@ -39,3 +39,7 @@ FAIL: gfortran.dg/pr45636.f90
 # T-HEAD: Need review
 #
 FAIL: gcc.dg/analyzer/dot-output.c
+#
+# Added by gcc-10.4, also failed in x86_64
+#
+FAIL: gcc.dg/debug/dwarf2/pr97060.c scan-assembler-times DW_AT_declaration 2

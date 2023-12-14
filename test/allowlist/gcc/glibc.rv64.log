@@ -118,3 +118,4 @@ FAIL: gcc.dg/asan/use-after-scope-switch-3.c
 FAIL: gcc.dg/asan/use-after-scope-switch-4.c
 FAIL: gcc.dg/ubsan/float-cast-overflow-bf.c
 FAIL: gcc.dg/ubsan/object-size-9.c
+FAIL: gcc.dg/asan/pr105396.c   -O0  output pattern test

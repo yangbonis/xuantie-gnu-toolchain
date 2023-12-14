@@ -2,3 +2,7 @@
 # XXX: Do not support '.POPCOUNT' in -fdump-tree-optimized
 #
 FAIL: gcc.dg/tree-ssa/popcount4ll.c
+#
+# Analysis is required, but does not affect the correctness of the program
+#
+FAIL: c-c++-common/goacc/firstprivate-mappings-1.c

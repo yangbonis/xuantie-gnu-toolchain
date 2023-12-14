@@ -114,17 +114,15 @@ AS_IF([test "x$enable_multilib" != xno || test "x$with_multilib_generator" != xn
 	[AC_SUBST(multilib_flags,--disable-multilib)])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(glibc_multilib_names,"rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
-                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d")],
+        [AC_SUBST(glibc_multilib_names,"rv64imac-lp64 rv64imafdc-lp64d rv32imafdc-ilp32d rv32imac-ilp32")],
         [AC_SUBST(glibc_multilib_names,"$with_arch-$with_abi")])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(musl64_multilib_names,"rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d \
-                                        rv64imafdc_v0p7_zfh_xtheadc-lp64d")],
+        [AC_SUBST(musl64_multilib_names,"rv64imac-lp64 rv64imafdc-lp64d")],
         [AC_SUBST(musl64_multilib_names,"$with_arch-$with_abi")])
 
 AS_IF([test "x$enable_multilib" != xno],
-        [AC_SUBST(musl32_multilib_names,"rv32imafdc-ilp32d rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d")],
+        [AC_SUBST(musl32_multilib_names,"rv32imafdc-ilp32d rv32imac-ilp32")],
         [AC_SUBST(musl32_multilib_names,"$with_arch-$with_abi")])
 
 AS_IF([test "x$enable_multilib" != xno],
@@ -133,6 +131,14 @@ AS_IF([test "x$enable_multilib" != xno],
                                          rv64imac-lp64 rv64imac_xtheadc-lp64 rv64imafdc-lp64d rv64imafdc_zfh_xtheadc-lp64d \
                                          rv64imafdcv_zfh_xtheadc-lp64d rv64imafdc_v0p7_zfh_xtheadc-lp64d")],
         [AC_SUBST(newlib_multilib_names,"$with_arch-$with_abi")])
+
+AS_IF([test "x$enable_multilib" != xno],
+        [AC_SUBST(thead64_multilib_names,"rv64imac_xtheadc-lp64 rv64imafdc_zfh_xtheadc-lp64d rv64imafdcv_zfh_xtheadc-lp64d rv64imafdc_v0p7_zfh_xtheadc-lp64d")],
+        [AC_SUBST(thead64_multilib_names,"$with_arch-$with_abi")])
+
+AS_IF([test "x$enable_multilib" != xno],
+        [AC_SUBST(thead32_multilib_names,"rv32imac_xtheadc-ilp32 rv32imafdc_zfh_xtheadc-ilp32d rv32imafdcv_zfh_xtheadc-ilp32d")],
+        [AC_SUBST(thead32_multilib_names,"$with_arch-$with_abi")])
 
 AC_ARG_ENABLE(gcc-checking,
         [AS_HELP_STRING([--enable-gcc-checking],
@@ -193,7 +199,7 @@ AC_ARG_WITH(gcc-dep-libs,
 
 AS_IF([test "x$with_gcc_dep_libs" != xdefault],
 	[AC_SUBST(NEED_GCC_EXTERNAL_LIBRARIES,false)]
-	[AC_SUBST(configure_gcc_dep_libs,--with-gmp=$with_gcc_dep_libs\ --with-mpfr=$with_gcc_dep_libs\ --with-mpc=$with_gcc_dep_libs\ --with-libexpat-prefix=$with_gcc_dep_libs)],
+	[AC_SUBST(configure_gcc_dep_libs,--with-gmp=$with_gcc_dep_libs\ --with-mpfr=$with_gcc_dep_libs\ --with-mpc=$with_gcc_dep_libs\ --with-libexpat-prefix=$with_gcc_dep_libs\ --with-libmpfr-prefix=$with_gcc_dep_libs)],
 	[AC_SUBST(configure_gcc_dep_libs,"")])
 
 AC_ARG_ENABLE(install_strip,
